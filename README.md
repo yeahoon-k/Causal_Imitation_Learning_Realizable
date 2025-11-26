@@ -1,25 +1,25 @@
-# Causal Imitation Learning (mSBD)
+# Causal Imitation Learning (Under L2.5 layer)
 
-This repository contains the implementation of a sequential imitation learning model under multi-outcome SBD conditions.
+This repository contains the implementation of a sequential imitation learning model under L2.5 layer.
 
 ---
 
-## Experiments
-The experiment compares the imitation accuracy in the mSBD environment between:  
-1. Applying Kumor's sequential pi-BD policy separately at each time step (baseline).  
-2. Deriving the sequential pi-BD policy from a projected graph where the unobserved variable $Y$ has been projected (proposed method).  
+## Experiments 
+We compare the imitation performance between:
+1. The legacy π-BD policy for imitating the expert L2.5 actions (baseline).
+2. The L2.5-aware strategy in the same environment (proposed method).
 
-The experiments were conducted on the following two graphs, with 1,000 SCMs and a sample size of 1,000 for each SCM.
-The evaluation metric is the mean squared error (MSE) of \( Y_1 \) and \( Y_2 \), averaged across both.
+The experiments were conducted on the following two graphs, with 5,000 SCMs and a sample size of 1,000 for each SCM.
+The evaluation metric is the mean squared error (MSE) of \( Y \).
 
 
 ## Usage
 ### Graph 1
 ```
-python run_graph1_mSBDIL.py
+python run_graph1_layer25.py
 ```
 
 ### Graph 2
 ```
-python run_graph2_mSBDIL.py
+python run_graph2_layer25.py
 ```
