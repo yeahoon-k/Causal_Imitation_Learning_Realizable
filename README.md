@@ -1,4 +1,4 @@
-# Causal Imitation Learning (Under L2.5 layer)
+# Causal Imitation Learning under the L2.5 layer
 
 This repository contains the implementation of a sequential imitation learning model under L2.5 layer.
 
