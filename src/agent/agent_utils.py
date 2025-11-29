@@ -12,9 +12,12 @@ class StructuralCausalModel:
         self.G = G
         self.__data = None
         self.__intervened_data = None
-        self.__data_exo = None
+        # self.__data_exo = None
         self.data_tmp = None
         self.ordered_topology = self.G.ordered_topology
+        self.__data_exo = {
+            ele: np.random.uniform(0, 1) if np.random.rand() > 0.5 else 1
+            for ele in self.ordered_topology}
 
 
     def sample_binary_data(self, sample_size: int, policy=None, L25_spec=None, intervened=False, Ys=None) -> pd.DataFrame:
@@ -43,17 +46,25 @@ class StructuralCausalModel:
                                                             )
             bin_data = pd.DataFrame(bin_data)
             self.__intervened_data = bin_data
+            return bin_data
         else:
             bin_data = self.__sample_binary_data(F_noise=F_noise_no,
                                                  sample_size=sample_size,
                                                  L25_spec=L25_spec)
-            bin_data = pd.DataFrame(bin_data)
-            self.__data = bin_data
-            self.data_tmp = bin_data
-        return bin_data
+
+            if self.data_tmp is None:
+                self.data_tmp = pd.DataFrame(bin_data)
+            else:
+                self.data_tmp = pd.concat([self.data_tmp, pd.DataFrame(bin_data)], ignore_index=True)
+
+            # Once expert call
+            # bin_data = pd.DataFrame(bin_data)
+            # self.__data = bin_data
+            # self.data_tmp = bin_data
+            return self.data_tmp
 
     def __get_parent_value(self, pa, node, data, L25_spec):
-        # L2.5에서 (pa -> node)를 x'로 고정했으면 그 값을 사용
+        # L2.5에서 (pa -> node)를 x'로 고정했으면 그 값을 사용 (l2.5 intervention)
         if L25_spec is not None and (pa, node) in L25_spec:
             return L25_spec[(pa, node)]
         # 아니면 평소처럼 부모의 최근 값 사용
@@ -65,12 +76,12 @@ class StructuralCausalModel:
                              L25_spec=None) -> dict:
         """ Sample binary data from the random SCM. Return np array """
         data = {ele: list() for ele in self.ordered_topology}  # data = {'node1':[], 'node2':[], ...}
-        data_exo = {
-            ele: np.random.uniform(0, 1) if np.random.rand() > 0.5 else 1
-            for ele in self.ordered_topology
-        }
+        # data_exo = {
+        #     ele: np.random.uniform(0, 1) if np.random.rand() > 0.5 else 1
+        #     for ele in self.ordered_topology
+        # }
 
-        self.__data_exo = data_exo
+        # self.__data_exo = self.data_exo
         for _ in range(sample_size):
             for _, node in enumerate(self.ordered_topology):
                 if not self.G.pa(node):
@@ -82,10 +93,14 @@ class StructuralCausalModel:
                     for i, pa in enumerate(self.G.pa(node)):
                         # check if there exists L2.5 intervention
                         pa_val = self.__get_parent_value(pa, node, data, L25_spec)
-                        if not i:
-                            xor = data[pa_val][-1] # data = { A:[1,0,1], B:[1,1, 0], C:[1,0, 1]}
-                        if i:
-                            xor = xor ^ data[pa_val][-1] # ^ : xor
+                        # if not i:
+                        #     xor = data[pa_val][-1] # data = { A:[1,0,1], B:[1,1, 0], C:[1,0, 1]}
+                        # if i:
+                        #     xor = xor ^ data[pa_val][-1] # ^ : xor
+                        if i == 0:
+                            xor = pa_val
+                        else:
+                            xor = xor ^ pa_val  # 여기서 pa_val은 이미 0/1 값
 
                     # current node's exogenous
                     p = self.__data_exo[node]
@@ -156,10 +171,14 @@ class StructuralCausalModel:
                     xor = 0
                     for i, pa in enumerate(self.G.pa(node)):
                         pa_val = self.__get_parent_value(pa, node, data, L25_spec)
-                        if not i:
-                            xor = data[pa_val][-1]
-                        if i:
-                            xor = xor ^ data[pa_val][-1]
+                        # if not i:
+                        #     xor = data[pa_val][-1]
+                        # if i:
+                        #     xor = xor ^ data[pa_val][-1]
+                        if i == 0:
+                            xor = pa_val
+                        else:
+                            xor = xor ^ pa_val  # 여기서 pa_val은 이미 0/1 값
 
                     p = self.__data_exo[node]
                     xor = xor ^ np.random.choice([0, 1], p=[1-p, p])

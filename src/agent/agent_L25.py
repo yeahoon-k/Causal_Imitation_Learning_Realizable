@@ -300,18 +300,15 @@ def get_policy(exp: int):
     # policy = Imitator.get_seq_piBD({'X1', 'X2', 'X3', 'X4'}, {'Y1', 'Y2'}, Imitator.order)
     policies = {
         'control': { # from Imitator.get_seq_piBD()
-            'X1': frozenset({}),
-            'X2': frozenset({'Z1'}),
-            'X3': frozenset({}),
-            'X4': frozenset({'Z2'})
+            # 'X1': frozenset({}),
+            # 'X2': frozenset({'Z1'}),
+            # 'X3': frozenset({}),
+            # 'X4': frozenset({'Z2'})
         },
-        'experiment_1': { # from Imitator.get_seq_piBD()
-            'X1': frozenset({}),
-            'X2': frozenset({'Z1'}),
-            'X3': frozenset({'X2', 'Z1'}),
-            'X4': frozenset({'X3'})
+        'experiment_1': { # W
+            'X': frozenset({'W'}),
         },
-        'experiment_2': { # projected policy
+        'experiment_2': { #
             'X1': frozenset({}),
             'X2': frozenset({'Z1'}),
             'X3': frozenset({'Z1', 'X2', 'W1'}),
@@ -319,7 +316,7 @@ def get_policy(exp: int):
         }
     }
     if exp == 1:
-        return policies['control'], policies['experiment_1'] # expert v.s. imitation
+        return policies['control'], policies['experiment_1'] # Nothing (expert) v.s. W (graph1)
     elif exp == 2:
         return policies['control'], policies['experiment_2']
     else:
@@ -327,15 +324,15 @@ def get_policy(exp: int):
 
 def get_policy_l25(exp: int):
     policies = {
-        'control': {  # expert's l2.5 action
-            ('X', 'Y'): 1
+        'expert': {  # expert's l2.5 action
+            ('X', 'Z'): 1
         },
         'experiment_1': {  # l2.5 imitator
-            ('X', 'Y'): 1,
+            ('X', 'Z'): 1,
         },
     }
     if exp == 1:
-        return policies['control'], policies['experiment_1'] # expert v.s. l2.5 imitate
+        return policies['expert'], policies['experiment_1'] # expert v.s. l2.5 imitate
     else:
         ValueError("There is no a matched experiment")
 
@@ -343,207 +340,72 @@ def __inner_L25(graph):
     Ag = Agent(graph)
     M = SCM(Ag)
 
-    # 1. L2.5 action 정의: 예를 들어 edge (X, Y)에서 X를 항상 1로 보게 함
-    # L25_spec = {('X', 'Y'): 1}
-
-    # 2. Expert: L2.5 action을 수행하는 SCM에서의 Y 기대값
+    # 1. Expert: L2.5 action을 수행하는 SCM에서의 Y 기대값
     #   - 여기서는 expert policy는 구조식 안에 이미 들어있다고 가정
-    data_expert = M.sample_binary_data(
-        sample_size=1000,
-        intervened=False,   # policy 개입은 없음
-        L25_spec=get_policy_l25(1)[0],  # 대신 edge-level L2.5 개입
-    )
-    E_EY = data_expert['Y'].mean()
+    # data_expert = M.sample_binary_data(
+    #     sample_size=1000,
+    #     intervened=False,   # policy 개입은 없음
+    #     L25_spec=get_policy_l25(1)[0],  # 대신 edge-level L2.5 개입
+    # )
+    # E_EY = data_expert['Y'].mean()
 
-    # 3. Imitator 1: 기존 policy로만 soft intervention (L2.5 없음)
+    # 1. Expert: L2.5 action을 수행하는 SCM에서의 Y 기대값
+    alpha = 0.6  # 예: 70%는 L2.5, 30%는 L1
+    n_total = 1000
+    n_L25 = int(alpha * n_total)
+    n_L1 = n_total - n_L25
+
+    # 같은 M, 같은 SCM 위에서
+    # # 1-(1) L2.5 regime에서 온 샘플
+    # data_L25_expert = M.sample_binary_data(
+    #     sample_size=n_L25,
+    #     intervened=False,
+    #     L25_spec=get_policy_l25(1)[0],  # L2.5 action 켠 상태
+    # )
+
+    # 1-(2) L2.5 regime에서 온 샘플
+    data_L25_L1_expert = M.sample_binary_data(
+        sample_size=n_L25,
+        intervened=False,
+        L25_spec=get_policy_l25(1)[0],  # L2.5 action 켠 상태
+    )
+
+    # 1-(1) L1 regime에서 온 샘플 (L2.5 없음) => return : L2.5 \cup L1
+    data_L25_L1_expert = M.sample_binary_data(
+        sample_size=n_L1,
+        intervened=False,
+        L25_spec=None,  # 그냥 원래 구조식만
+    )
+
+    # # 1-(2) L2.5 regime에서 온 샘플
+    # data_L25_L1_expert = M.sample_binary_data(
+    #     sample_size=n_L25,
+    #     intervened=False,
+    #     L25_spec=get_policy_l25(1)[0],  # L2.5 action 켠 상태
+    # )
+
+    E_EY = data_L25_L1_expert['Y'].mean()
+
+    # 2. Imitator 1: pi-bd without L2.5
     data_naive = M.sample_binary_data(
-        sample_size=1000,
+        sample_size=n_total,
         intervened=True,
-        policy=get_policy(1)[0],   # Pi-backdoor policy (Junzhe)
+        policy=get_policy(1)[1],   # Pi-backdoor policy (Junzhe)
         Ys={'Y'},
         L25_spec=None  # No L2.5 strategy
     )
     I_EY_naive = data_naive['Y'].mean()
 
-    # 4. Imitator 2: 같은 policy + L2.5까지 함께 수행
+    # 3. Imitator 2: pi-bd policy + L2.5
     data_L25 = M.sample_binary_data(
-        sample_size=1000,
+        sample_size=n_total,
         intervened=True,
-        policy=get_policy(1)[0],
+        policy=get_policy(1)[1], # same Pi-backdoor policy (Junzhe) as naive policy
         Ys={'Y'},
         L25_spec=get_policy_l25(1)[1]         # 여기는 L2.5 적용
     )
     I_EY_L25 = data_L25['Y'].mean()
 
-    # 5. expert 대비 MSE 두 개 반환
+    # 5. Expert vs Imitator's policies
     return (E_EY - I_EY_naive) ** 2, (E_EY - I_EY_L25) ** 2
-
-
-def main():
-    test_msbd1 = nx_graph({'Z1', 'W1', 'W2', 'W3', 'X1', 'X2', 'Y1',
-                           'Z2', 'X3', 'X4', 'Y2',
-                           'UX1Z1', 'UX3Z2'},
-                          {('X1', 'X2'), ('X2', 'Y1'), ('Z1', 'Y1'),
-                           ('X3', 'X4'), ('X4', 'Y2'), ('Z2', 'Y2'),
-                           ('Y1', 'X3'), ('Z1', 'Y2'),
-                           ('W1', 'Z1'), ('W1', 'Y2'),  # Ws attack
-                           ('W2', 'Z1'), ('W2', 'Y2'),
-                           ('W3', 'W1'), ('W3', 'Y2'),
-                           ('UX1Z1', 'X1'), ('UX1Z1', 'Z1'), # UC
-                           ('UX3Z2', 'X3'), ('UX3Z2', 'U2')},
-                          {('X1', 'Z1'), ('X3', 'Z2')},
-                          ordered_topology=('UX1Z1', 'UX3Z2', 'W3', 'W2', 'W1', 'Z1', 'X1', 'X2', 'Y1', 'Z2', 'X3', 'X4', 'Y2')
-                          )
-
-    test_msbd2 = nx_graph({'Z1', 'W1', 'W2', 'W3', 'W4', 'X1', 'X2', 'Y1',
-                           'Z2', 'X3', 'X4', 'Y2',
-                           'UX1Z1', 'UX3Z2'},
-                          {('X1', 'X2'), ('X2', 'Y1'), ('Z1', 'Y1'),
-                           ('X3', 'X4'), ('X4', 'Y2'), ('Z2', 'Y2'),
-                           ('Y1', 'X3'), ('Z1', 'Y2'),
-                           ('W1', 'X2'), ('W1', 'Y2'), # Ws attack
-                           ('W2', 'Z1'), ('W2', 'Y2'),
-                           ('W3', 'W1'), ('W3', 'X4'),
-                           ('W4', 'W3'), ('W4', 'Y2'),
-                           ('UX1Z1', 'X1'), ('UX1Z1', 'Z1'),  # UC
-                           ('UX3Z2', 'X3'), ('UX3Z2', 'U2')},
-                          {('X1', 'Z1'), ('X3', 'Z2')},
-                          ordered_topology=('UX1Z1', 'UX3Z2','W4', 'W3',
-                                            'W2', 'W1', 'Z1', 'X1',
-                                            'X2', 'Y1', 'Z2', 'X3', 'X4', 'Y2'))
-
-
-    def compute_naive_proj():
-        naive_proj_result = __inner_L25(test_msbd1)
-        return naive_proj_result
-
-    results_MSE = []
-    for i in range(50):
-        num_iterations = 100
-        results = Parallel(n_jobs=-1)(
-            delayed(compute_naive_proj)() for _ in tqdm(range(num_iterations))
-        )
-
-        dict_naive_Y1 = [res[0] for res in results]
-        dict_naive_Y2 = [res[1] for res in results]
-        dict_proj_Y1 = [res[2] for res in results]
-        dict_proj_Y2 = [res[3] for res in results]
-
-        MSE_naive_Y1 = np.array(dict_naive_Y1).mean(axis=0)
-        MSE_naive_Y2 = np.array(dict_naive_Y2).mean(axis=0)
-        MSE_naive = (MSE_naive_Y1 + MSE_naive_Y2)/2
-
-        MSE_proj_Y1 = np.array(dict_proj_Y1).mean(axis=0)
-        MSE_proj_Y2 = np.array(dict_proj_Y2).mean(axis=0)
-        MSE_proj = (MSE_proj_Y1 + MSE_proj_Y2) / 2
-
-        reduction_ratio = (MSE_naive - MSE_proj) / MSE_naive * 100
-        print(f"MSE_naive : {MSE_naive}, MSE_proj : {MSE_proj}, diff of two : {MSE_naive - MSE_proj}")
-        print(f"Reduction ratio: {reduction_ratio:.5f}%")
-        results_MSE.append(reduction_ratio)
-
-    print("================")
-    print(np.array(results_MSE))
-    print(np.array(results_MSE).max())
-
-if __name__ == '__main__':
-    # Confounding graph
-    test_g = nx_graph({'X', 'Y', 'Z'},
-                      {('Z', 'X'), ('Z', 'Y')})
-    # Primer's graph
-    test_g2 = nx_graph({'X', 'Y', 'Z', 'W', 'U'},
-                       {('X', 'Y'), ('X', 'W'), ('Z', 'W'), ('W', 'U')})
-    # Collider without X->Y
-    test_g3 = nx_graph({'X', 'Y', 'Z'},
-                       {('X', 'Z'), ('Y', 'Z')})
-    # Backdoor graph with two Z1, Z2
-    test_g4 = nx_graph({'X', 'Y', 'Z1', 'Z2'},
-                       {('Z1', 'X'), ('Z2', 'X'), ('Z1', 'Y'), ('Z2', 'Y'), ('X', 'Y')})
-    # Backdoor graph with two Z1, Z2 and surrogate S
-    test_g4 = nx_graph({'X', 'Y', 'Z1', 'Z2', 'S'},
-                       {('Z1', 'X'), ('Z2', 'X'), ('Z1', 'S'), ('Z2', 'S'),
-                        ('X', 'S'), ('S', 'Y')})
-    # Backdoor graph with two Z1, Z2 and surrogate S
-    test_g5 = nx_graph({'X', 'Y', 'Z1', 'Z2', 'Z3', 'S'},
-                       {('X', 'Z1'), ('Z2', 'X'), ('X', 'S'), ('Z3', 'Z1'),
-                        ('Z2', 'Z3'), ('Z3', 'S'), ('Z2', 'S'), ('S', 'Y')})
-    # Front door graph1
-    test_g6 = nx_graph({'X', 'Z', 'Y'},
-                       {('X', 'Z'), ('Z', 'Y')},
-                       {('X', 'Y')})
-    # Napkin graph
-    test_g7 = nx_graph({'X', 'W1', 'W2', 'Y'},
-                       {('X', 'Y'), ('W1', 'W2'), ('W2', 'X')},
-                       {('X', 'W1'), ('W1', 'Y')})
-    # X-> W1 -> W2 -> W3 -> Y with bi-directed edges (X,W2,Y), (W1, W3)
-    test_g8 = nx_graph({'X', 'W1', 'W2', 'W3', 'Y'},
-                       {('X', 'W1'), ('W1', 'W2'), ('W2', 'W3'), ('W3', 'Y')},
-                       {('X', 'W2'), ('W2', 'Y'), ('W1', 'W3')})
-    # X  W2  Y with bi-directed edges (X,W2) (W2,Y)
-    test_g9 = nx_graph({'X', 'W2', 'Y'},
-                       {},
-                       {('X', 'W2'), ('W2', 'Y')})
-    # midterm graph-(1)
-    test_g10 = nx_graph({'A', 'C', 'X', 'Y'},
-                        {('C', 'X'), ('X', 'Y')},
-                        {('A','X'),('A','Y'),('C','Y')})
-    # bow graph
-    test_g11 = nx_graph({'X', 'Y'},
-                        {('X', 'Y')},
-                        {('X', 'Y')})
-
-    # Imitation learning graphs with temporal order
-    test_imi_1 = nx_graph({'Z', 'X1', 'X2', 'Y'},
-                          {('X1', 'X2'), ('X2', 'Y')},
-                          {('X1', 'Z'), ('X2', 'Z'), ('Z', 'Y')},
-                          ['Z', 'X1', 'X2', 'Y'])
-
-    test_imi_2 = nx_graph({'Z', 'X1', 'X2', 'Y'},
-                          {('X1', 'X2'),('X2', 'Y'), ('Z', 'Y')},
-                          {('X1', 'Z')},
-                          ['Z', 'X1', 'X2', 'Y'])
-
-    test_imi_3 = nx_graph({'X1', 'Z', 'X2', 'Y'},
-                          {('X1', 'X2'), ('X2', 'Y'), ('Z', 'Y')},
-                          {('X1', 'Z')},
-                          ['X1', 'Z', 'X2', 'Y'])
-
-    test_imi_4 = nx_graph({'X1', 'Z', 'X2', 'Y'},
-                          {('Z', 'X2'), ('X2', 'Y'), ('X1', 'Y')},
-                          {('X1', 'Z'), ('Z', 'Y')},
-                          ['X1', 'Z', 'X2', 'Y'])
-
-
-    # Fully mSBD-1
-    test_full_imi_mSBD = nx_graph({'X1', 'Z1', 'X2', 'Z2', 'Y1', 'Y2'},
-                          {('Z1', 'X1'), ('Z1', 'Y1'), ('X1', 'Y1'),
-                           ('Z2', 'X2'), ('Z2', 'Y2'), ('X2', 'Y2'),
-                           ('Z1', 'X2'), ('Z1', 'Y2'), ('Z1', 'Y1'),
-                           ('X1', 'X2'), ('X1', 'Y2'), ('X1', 'Z2'),
-                           ('Y1', 'Z2'), ('Y1', 'X2'), ('Y1', 'Y2')},
-                          {},
-                          ['Z1','X1', 'Y1', 'Z2', 'X2', 'Y2'])
-
-
-    # Fully mSBD-2?r
-    test_full_imi_mSBD2 = nx_graph({'X1', 'X2', 'X3', 'Z1', 'Z2', 'Z3', 'Y1'},
-                          {('X1', 'X2'), ('X2', 'X3'),
-                           ('Z1', 'Z2'), ('Z2', 'Z3'),
-                           ('Z3', 'Y'), ('X3', 'Y')},
-                          {('Z1', 'X1')},
-                          ['X1', 'Z1', 'X2', 'Z2', 'X3', 'Z3', 'Y'])
-
-    # Imitator = Agent(test_msbd1)
-    # policy = Imitator.get_seq_piBD({'X1', 'X2', 'X3', 'X4'}, {'Y1', 'Y2'}, Imitator.order)
-    # print(policy)
-
-    # Imitator = Agent(test_imi_mSBD)
-    # policy = Imitator.get_seq_piBD({'X1', 'X2'}, {'Y2'}, Imitator.order)
-    # print(policy)
-    # policy = Imitator.get_seq_piBD({'X1', 'X2'}, {'Y1'}, Imitator.order)
-    # print(policy)
-
-    # Main source for imitation learning
-    main()
-
 

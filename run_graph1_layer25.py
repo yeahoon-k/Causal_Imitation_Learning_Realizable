@@ -3,53 +3,46 @@ from src.agent.agent_L25 import *
 
 
 def main():
-    test_msbd1 = nx_graph({'Z1', 'W1', 'W2', 'W3', 'X1', 'X2', 'Y1',
-                           'Z2', 'X3', 'X4', 'Y2',
-                           'UX1Z1', 'UX3Z2'},
-                          {('X1', 'X2'), ('X2', 'Y1'), ('Z1', 'Y1'),
-                           ('X3', 'X4'), ('X4', 'Y2'), ('Z2', 'Y2'),
-                           ('Y1', 'X3'), ('Z1', 'Y2'),
-                           ('W1', 'Z1'), ('W1', 'Y2'),  # Ws attack
-                           ('W2', 'Z1'), ('W2', 'Y2'),
-                           ('W3', 'W1'), ('W3', 'Y2'),
-                           ('UX1Z1', 'X1'), ('UX1Z1', 'Z1'), # UC
-                           ('UX3Z2', 'X3'), ('UX3Z2', 'U2')},
-                          {('X1', 'Z1'), ('X3', 'Z2')},
-                          ordered_topology=('UX1Z1', 'UX3Z2', 'W3', 'W2', 'W1', 'Z1', 'X1', 'X2', 'Y1', 'Z2', 'X3', 'X4', 'Y2')
+    test_l25 = nx_graph({'W', 'X', 'Y', 'Z'},
+                          {('W', 'X'), ('W', 'Y'),
+                           ('X', 'Y'), ('X', 'Z'),
+                           ('Z', 'Y')
+                           },
+                          {},
+                          ordered_topology=('W', 'X', 'Z', 'Y'),
                           )
 
-    def compute_naive_proj():
-        naive_proj_result = __inner_L25(test_msbd1)
-        return naive_proj_result
+    def compute_naive_l25():
+        # L2.5 실험 한 번 (SCM 하나 + 샘플링들) 수행
+        return __inner_L25(test_l25)
 
     results_MSE = []
-    for i in range(50):
+    for i in range(10):
         num_iterations = 100
         results = Parallel(n_jobs=-1)(
-            delayed(compute_naive_proj)() for _ in tqdm(range(num_iterations))
+            delayed(compute_naive_l25)() for _ in tqdm(range(num_iterations))
         )
 
-        dict_naive_Y1 = [res[0] for res in results]
-        dict_naive_Y2 = [res[1] for res in results]
-        dict_proj_Y1 = [res[2] for res in results]
-        dict_proj_Y2 = [res[3] for res in results]
+        # __inner_L25가 (MSE_naive, MSE_L25)를 리턴
+        MSE_naive_list = [res[0] for res in results]
+        MSE_L25_list  = [res[1] for res in results]
 
-        MSE_naive_Y1 = np.array(dict_naive_Y1).mean(axis=0)
-        MSE_naive_Y2 = np.array(dict_naive_Y2).mean(axis=0)
-        MSE_naive = (MSE_naive_Y1 + MSE_naive_Y2)/2
+        MSE_naive = np.mean(MSE_naive_list)
+        MSE_L25   = np.mean(MSE_L25_list)
 
-        MSE_proj_Y1 = np.array(dict_proj_Y1).mean(axis=0)
-        MSE_proj_Y2 = np.array(dict_proj_Y2).mean(axis=0)
-        MSE_proj = (MSE_proj_Y1 + MSE_proj_Y2) / 2
+        reduction_ratio = (MSE_naive - MSE_L25) / MSE_naive * 100
 
-        reduction_ratio = (MSE_naive - MSE_proj) / MSE_naive * 100
-        print(f"MSE_naive : {MSE_naive}, MSE_proj : {MSE_proj}, diff of two : {MSE_naive - MSE_proj}")
+        print(f"[iter {i}] MSE_naive: {MSE_naive:.6f}, "
+              f"MSE_L25: {MSE_L25:.6f}, diff: {MSE_naive - MSE_L25:.6f}")
         print(f"Reduction ratio: {reduction_ratio:.5f}%")
+
         results_MSE.append(reduction_ratio)
 
     print("================")
-    print(np.array(results_MSE))
-    print(np.array(results_MSE).max())
+    results_MSE = np.array(results_MSE)
+    # print(results_MSE)
+    print("max reduction:", results_MSE.max())
+    print("mean reduction:", results_MSE.mean())
 
 if __name__ == '__main__':
     main()
