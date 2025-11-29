@@ -18,8 +18,3 @@ The evaluation metric is the mean squared error (MSE) of \( Y \).
 ```
 python run_graph1_layer25.py
 ```
-
-### Graph 2
-```
-python run_graph2_layer25.py
-```
